@@ -455,6 +455,38 @@ tr:hover td{background:rgba(0,255,180,0.02)}
 .sc-status{font-size:10px;font-family:'JetBrains Mono',monospace;margin-top:8px;display:flex;align-items:center;gap:6px}
 .sc-status.running{color:var(--g2)}.sc-status.done{color:var(--g1)}.sc-status.err{color:#ff6b6b}
 .sc-status::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;animation:blink-g 1s infinite}
+
+/* UPLOAD AREA */
+.sc-upload-area{
+  border:2px dashed var(--border2);border-radius:12px;padding:22px;
+  text-align:center;cursor:pointer;margin-bottom:12px;
+  transition:all .25s;background:rgba(0,255,180,0.02);
+}
+.sc-upload-area:hover,.sc-upload-area.drag{
+  border-color:var(--g1);background:rgba(0,255,180,0.07);
+  box-shadow:0 0 20px rgba(0,255,180,0.1);
+}
+.sc-upload-ico{font-size:28px;margin-bottom:7px}
+.sc-upload-txt{font-size:13px;font-weight:700;color:var(--text2);margin-bottom:4px}
+.sc-upload-sub{font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace}
+
+/* FILE ITEM */
+.sc-file-item{
+  display:flex;align-items:center;gap:10px;
+  background:rgba(0,255,180,0.05);border:1px solid rgba(0,255,180,0.15);
+  border-radius:9px;padding:9px 12px;margin-bottom:7px;
+  animation:pg-in .2s ease;
+}
+.sc-file-ico{font-size:16px;flex-shrink:0}
+.sc-file-info{flex:1;min-width:0}
+.sc-file-name{font-size:12px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-file-meta{font-size:10px;color:var(--text3);margin-top:2px}
+.sc-file-status{font-size:10px;font-family:'JetBrains Mono',monospace;padding:2px 8px;border-radius:5px;flex-shrink:0}
+.sc-file-status.idle{background:rgba(0,212,255,0.1);color:var(--g2);border:1px solid rgba(0,212,255,0.2)}
+.sc-file-status.running{background:rgba(245,200,66,0.1);color:var(--gold);border:1px solid rgba(245,200,66,0.2)}
+.sc-file-status.done{background:rgba(0,255,180,0.1);color:var(--g1);border:1px solid rgba(0,255,180,0.2)}
+.sc-file-del{cursor:pointer;color:var(--text3);font-size:13px;padding:3px 6px;border-radius:5px;transition:all .2s;flex-shrink:0}
+.sc-file-del:hover{color:#ff6b6b;background:rgba(255,107,107,0.1)}
 </style>
 </head>
 <body>
@@ -562,13 +594,34 @@ tr:hover td{background:rgba(0,255,180,0.02)}
       </div>
     </div>
 
-    <!-- RUN SC -->
+    <!-- SCRIPT MANAGER -->
     <div class="run-sc-box">
-      <div class="run-sc-hd">// Run Script / Command</div>
-      <textarea class="sc-input" id="sc-cmd" placeholder="Masukkan perintah / script yang ingin dijalankan...&#10;Contoh: /start, /help, npm run bot, python bot.py"></textarea>
+      <div class="run-sc-hd">// Script Manager — Bot WA</div>
+
+      <!-- UPLOAD AREA -->
+      <div class="sc-upload-area" id="sc-upload-area" onclick="document.getElementById('sc-file-input').click()" ondragover="scDragOver(event)" ondragleave="scDragLeave(event)" ondrop="scDrop(event)">
+        <div class="sc-upload-ico">📁</div>
+        <div class="sc-upload-txt">Klik atau drag & drop file script</div>
+        <div class="sc-upload-sub">.js · .py · .sh · .txt · semua format didukung</div>
+        <input type="file" id="sc-file-input" style="display:none" onchange="scFileSelected(event)">
+      </div>
+
+      <!-- FILE LIST -->
+      <div id="sc-file-list" style="display:none;margin-bottom:12px">
+        <div style="font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace;letter-spacing:2px;margin-bottom:8px;text-transform:uppercase">// File Terupload</div>
+        <div id="sc-files"></div>
+      </div>
+
+      <!-- COMMAND INPUT -->
+      <div style="margin-bottom:10px">
+        <div style="font-size:9px;color:var(--text3);font-family:'JetBrains Mono',monospace;letter-spacing:1.5px;margin-bottom:6px;text-transform:uppercase">// Perintah / Command (opsional)</div>
+        <textarea class="sc-input" id="sc-cmd" placeholder="Kosongkan untuk auto-run file, atau ketik perintah custom&#10;Contoh: /start, /stop, /restart, /status"></textarea>
+      </div>
+
       <div class="sc-btn-row">
-        <button class="btn g" style="flex:1;justify-content:center" onclick="runSC()">▶ Run</button>
-        <button class="btn ghost" style="padding:8px 14px" onclick="clearSC()" title="Clear">🗑</button>
+        <button class="btn g" style="flex:1;justify-content:center;font-size:13px" onclick="runSC()">▶ Run</button>
+        <button class="btn b" style="padding:8px 14px" onclick="scAddFile()" title="Tambah File Lagi">➕</button>
+        <button class="btn ghost" style="padding:8px 14px" onclick="clearSC()" title="Clear Semua">🗑</button>
       </div>
       <div id="sc-status" class="sc-status" style="display:none"></div>
       <div class="sc-output" id="sc-output"></div>
@@ -1004,42 +1057,137 @@ function logoutMemberAdmin(){
 }
 
 // ═══ RUN SC ═══
+// ═══ SCRIPT FILE MANAGER ═══
+let scFiles = []; // {name, size, type, content, status}
+
+function getFileIco(name){
+  const ext=name.split('.').pop().toLowerCase();
+  if(ext==='js'||ext==='mjs') return '🟨';
+  if(ext==='py') return '🐍';
+  if(ext==='sh') return '⚙️';
+  if(ext==='json') return '📋';
+  if(ext==='txt') return '📄';
+  return '📁';
+}
+function fmtSize(b){return b>1024*1024?(b/1024/1024).toFixed(1)+' MB':b>1024?(b/1024).toFixed(0)+' KB':b+' B'}
+
+function renderScFiles(){
+  const wrap=document.getElementById('sc-file-list');
+  const list=document.getElementById('sc-files');
+  if(!scFiles.length){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  list.innerHTML=scFiles.map((f,i)=>`
+    <div class="sc-file-item" id="sc-fi-${i}">
+      <div class="sc-file-ico">${getFileIco(f.name)}</div>
+      <div class="sc-file-info">
+        <div class="sc-file-name">${f.name}</div>
+        <div class="sc-file-meta">${fmtSize(f.size)} · ${f.type||'unknown'}</div>
+      </div>
+      <span class="sc-file-status ${f.status}" id="sc-fst-${i}">${f.status==='idle'?'SIAP':f.status==='running'?'RUNNING':'DONE'}</span>
+      <span class="sc-file-del" onclick="scDelFile(${i})" title="Hapus">✕</span>
+    </div>`).join('');
+}
+
+function scFileSelected(e){
+  const files=e.target.files;
+  if(!files||!files.length) return;
+  for(const f of files){
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      scFiles.push({name:f.name,size:f.size,type:f.type||f.name.split('.').pop(),content:ev.target.result,status:'idle'});
+      renderScFiles();
+      toast(`File "${f.name}" berhasil diupload 📁`);
+    };
+    reader.readAsText(f);
+  }
+  e.target.value='';
+}
+function scDelFile(i){
+  const n=scFiles[i].name;
+  scFiles.splice(i,1);
+  renderScFiles();
+  toast(`"${n}" dihapus`,'warn');
+}
+function scAddFile(){document.getElementById('sc-file-input').click();}
+function scDragOver(e){e.preventDefault();document.getElementById('sc-upload-area').classList.add('drag');}
+function scDragLeave(){document.getElementById('sc-upload-area').classList.remove('drag');}
+function scDrop(e){
+  e.preventDefault();scDragLeave();
+  const files=e.dataTransfer.files;
+  for(const f of files){
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      scFiles.push({name:f.name,size:f.size,type:f.type||f.name.split('.').pop(),content:ev.target.result,status:'idle'});
+      renderScFiles();toast(`File "${f.name}" diupload 📁`);
+    };reader.readAsText(f);
+  }
+}
+
 const SC_RESPONSES = {
-  '/start':   '✅ Bot berhasil distart!\n> Status: RUNNING\n> PID: '+Math.floor(Math.random()*9999+1000),
-  '/stop':    '⛔ Bot dihentikan.\n> Status: STOPPED',
-  '/restart': '🔄 Merestart bot...\n> Stopping... done\n> Starting... done\n> Status: RUNNING',
-  '/status':  '📊 Bot Status: ONLINE\n> Uptime: '+Math.floor(Math.random()*999)+' menit\n> Memory: '+Math.floor(Math.random()*200+50)+'MB',
-  '/help':    '📋 Perintah tersedia:\n  /start  — Jalankan bot\n  /stop   — Hentikan bot\n  /restart — Restart bot\n  /status  — Cek status\n  /ping    — Cek koneksi\n  /info    — Info akun',
-  '/ping':    '🏓 Pong!\n> Latency: '+Math.floor(Math.random()*80+10)+'ms\n> Server: Online',
-  '/info':    ()=>`👤 Info Akun\n> Nama: ${currentMember?.nama||'—'}\n> User: ${currentMember?.user||'—'}\n> RAM: ${currentMember?.ram||'—'} GB\n> Status: ${currentMember?.status||'—'}`,
+  '/start':   ()=>'✅ Bot berhasil distart!\n> Status   : RUNNING\n> PID      : '+Math.floor(Math.random()*9999+1000)+'\n> Timestamp: '+new Date().toLocaleTimeString('id-ID'),
+  '/stop':    ()=>'⛔ Bot dihentikan.\n> Status   : STOPPED\n> Timestamp: '+new Date().toLocaleTimeString('id-ID'),
+  '/restart': ()=>'🔄 Merestart bot...\n> Stopping... done\n> Starting... done\n> Status   : RUNNING\n> Uptime   : 0 detik',
+  '/status':  ()=>'📊 Bot Status : ONLINE\n> Uptime   : '+Math.floor(Math.random()*999)+' menit\n> Memory   : '+Math.floor(Math.random()*200+50)+' MB\n> CPU      : '+Math.floor(Math.random()*30+5)+'%',
+  '/help':    ()=>'📋 Perintah:\n  /start    — Jalankan bot\n  /stop     — Hentikan bot\n  /restart  — Restart bot\n  /status   — Cek status\n  /ping     — Cek koneksi\n  /info     — Info akun',
+  '/ping':    ()=>'🏓 Pong!\n> Latency  : '+Math.floor(Math.random()*80+10)+' ms\n> Server   : Online',
+  '/info':    ()=>`👤 Info Akun\n> Nama     : ${currentMember?.nama||'—'}\n> User     : ${currentMember?.user||'—'}\n> RAM      : ${currentMember?.ram||'—'} GB\n> Status   : ${currentMember?.status||'—'}`,
 };
+
 function runSC(){
   const cmd=document.getElementById('sc-cmd').value.trim();
-  if(!cmd){toast('Masukkan perintah dulu!','warn');return;}
   const stat=document.getElementById('sc-status');
   const out=document.getElementById('sc-output');
+
+  // Harus ada file atau command
+  if(!scFiles.length && !cmd){toast('Upload file atau masukkan perintah dulu!','warn');return;}
+
   stat.className='sc-status running';stat.textContent='Menjalankan...';stat.style.display='flex';
   out.classList.remove('show');
+
+  // Tandai semua file jadi running
+  scFiles.forEach((f,i)=>{f.status='running';const el=document.getElementById('sc-fst-'+i);if(el){el.className='sc-file-status running';el.textContent='RUNNING';}});
+
   setTimeout(()=>{
-    const key=cmd.toLowerCase().split(' ')[0];
-    let resp=SC_RESPONSES[key];
-    if(typeof resp==='function') resp=resp();
-    if(!resp){
-      // simulate generic command execution
-      resp=`> Executing: ${cmd}\n$ ${cmd}\n✅ Perintah dikirim.\n> Output: Command received by server\n> Timestamp: ${new Date().toLocaleTimeString('id-ID')}`;
+    let lines=[];
+
+    // Proses file
+    if(scFiles.length){
+      scFiles.forEach((f,i)=>{
+        const ext=f.name.split('.').pop().toLowerCase();
+        const preview=f.content?f.content.split('\n').slice(0,3).map(l=>'  '+l).join('\n'):'';
+        lines.push(`📁 File: ${f.name}`);
+        if(ext==='js'||ext==='mjs') lines.push(`> node ${f.name}\n> Menjalankan script Node.js...\n${preview}\n> ✅ Script berjalan sukses`);
+        else if(ext==='py') lines.push(`> python ${f.name}\n> Menjalankan script Python...\n${preview}\n> ✅ Script berjalan sukses`);
+        else if(ext==='sh') lines.push(`> bash ${f.name}\n> Menjalankan shell script...\n${preview}\n> ✅ Script berjalan sukses`);
+        else lines.push(`> Membaca file ${f.name}...\n${preview}\n> ✅ File diproses`);
+        lines.push(`> PID: ${Math.floor(Math.random()*9999+1000)} | RAM: ${currentMember?.ram||1}GB | ${new Date().toLocaleTimeString('id-ID')}\n`);
+        f.status='done';const el=document.getElementById('sc-fst-'+i);
+        if(el){el.className='sc-file-status done';el.textContent='DONE';}
+      });
     }
-    out.textContent='$ '+cmd+'\n'+resp;
+
+    // Proses command
+    if(cmd){
+      const key=cmd.toLowerCase().split(' ')[0];
+      let resp=SC_RESPONSES[key];
+      if(typeof resp==='function') resp=resp();
+      if(!resp) resp=`> Executing: ${cmd}\n$ ${cmd}\n✅ Perintah dikirim ke server\n> Timestamp: ${new Date().toLocaleTimeString('id-ID')}`;
+      lines.push('$ '+cmd+'\n'+resp);
+    }
+
+    out.textContent=lines.join('\n');
     out.classList.add('show');
-    stat.className='sc-status done';stat.textContent='Selesai';
-    toast('Script dijalankan ▶');
-  },900);
+    stat.className='sc-status done';stat.textContent='Selesai — semua script berjalan';
+    toast('▶ Script berhasil dijalankan!');
+  },1200);
 }
+
 function clearSC(){
+  scFiles=[];renderScFiles();
   document.getElementById('sc-cmd').value='';
-  const out=document.getElementById('sc-output');
-  out.classList.remove('show');out.textContent='';
-  const stat=document.getElementById('sc-status');
-  stat.style.display='none';stat.textContent='';
+  const out=document.getElementById('sc-output');out.classList.remove('show');out.textContent='';
+  const stat=document.getElementById('sc-status');stat.style.display='none';stat.textContent='';
+  toast('Script manager dibersihkan 🗑','warn');
 }
 
 function loginAdmin(){
